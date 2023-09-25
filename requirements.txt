@@ -3,3 +3,10 @@ numpy
 pandas
 pydeck
 streamlit
+matplotlib
+seaborn
+os
+warnings
+ipywidgets
+IPython
+plotly
