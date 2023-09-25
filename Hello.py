@@ -99,6 +99,9 @@ def run():
       
       return result
   calculate_metrics_by_tenor_weighted(0, 10, df)
+  
+  # title
+  st.title('Metrics by FICO Range')
 
   # Create a dropdown widget for selecting the date range
   tenure_options = {
