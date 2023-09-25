@@ -21,6 +21,8 @@ import streamlit as st
 import plotly.express as px
 import plotly.graph_objects as go
 from streamlit.logger import get_logger
+import pydeck as pdk
+
 
 LOGGER = get_logger(__name__)
 
@@ -114,6 +116,44 @@ def run():
   st.write(result_df)
 
 
+  # groupby state and calculate metrics
+  dfg_state = df.groupby('State')
+
+  # 1. % total UPB by state
+  total_upb = dfg_state['UPB'].sum()
+  pct_sum_upb = total_upb / total_upb.sum() * 100
+
+  # 2. % total Bal by state
+  av_bal = dfg_state['Bal'].mean()
+
+  # 3. WA time
+  wa_time = dfg_state.apply(weighted_avg, 'time')
+
+  # 4. WA int
+  wa_int = dfg_state.apply(weighted_avg, 'int')
+
+  # 5. WA FICO
+  wa_fico = dfg_state.apply(weighted_avg, 'FICO')
+
+  # 6. WA EMI
+  wa_emi = dfg_state.apply(weighted_avg, 'EMI')
+
+  df_state = pd.DataFrame({
+      '% Total UPB': pct_sum_upb,
+      'Average Bal': av_bal,
+      'WA time': wa_time,
+      'WA int': wa_int,
+      'WA FICO': wa_fico,
+      'WA EMI': wa_emi
+  })
+
+  df_state = df_state.drop('DC', axis=0)
+
+  # Display the resulting DataFrame
+  st.write(result_df)
+
+
+
   ############################################################ Plotting ############################################################
 
 
@@ -166,6 +206,69 @@ def run():
       st.plotly_chart(bar_fig2)
 
 
+  ####################### US States Heatmap #######################
+
+
+
+  # Function to get state code from state name
+  def state_name_to_code(state_name):
+      state_name_to_code_dict = {
+          'Alabama': 'AL', 'Alaska': 'AK', 'Arizona': 'AZ', 'Arkansas': 'AR', 'California': 'CA', 
+          'Colorado': 'CO', 'Connecticut': 'CT', 'Delaware': 'DE', 'Florida': 'FL', 'Georgia': 'GA', 
+          'Hawaii': 'HI', 'Idaho': 'ID', 'Illinois': 'IL', 'Indiana': 'IN', 'Iowa': 'IA', 
+          'Kansas': 'KS', 'Kentucky': 'KY', 'Louisiana': 'LA', 'Maine': 'ME', 'Maryland': 'MD', 
+          'Massachusetts': 'MA', 'Michigan': 'MI', 'Minnesota': 'MN', 'Mississippi': 'MS', 'Missouri': 'MO', 
+          'Montana': 'MT', 'Nebraska': 'NE', 'Nevada': 'NV', 'New Hampshire': 'NH', 'New Jersey': 'NJ', 
+          'New Mexico': 'NM', 'New York': 'NY', 'North Carolina': 'NC', 'North Dakota': 'ND', 'Ohio': 'OH', 
+          'Oklahoma': 'OK', 'Oregon': 'OR', 'Pennsylvania': 'PA', 'Rhode Island': 'RI', 'South Carolina': 'SC', 
+          'South Dakota': 'SD', 'Tennessee': 'TN', 'Texas': 'TX', 'Utah': 'UT', 'Vermont': 'VT', 
+          'Virginia': 'VA', 'Washington': 'WA', 'West Virginia': 'WV', 'Wisconsin': 'WI', 'Wyoming': 'WY'
+      }
+      return state_name_to_code_dict.get(state_name)
+
+  # Fetch the GeoJSON data for US states
+  US_STATES_GEOJSON_URL = "https://raw.githubusercontent.com/PublicaMundi/MappingAPI/master/data/geojson/us-states.json"
+  geojson_data = json.loads(requests.get(US_STATES_GEOJSON_URL).text)
+
+  # title
+  st.title('US States Heatmap')
+
+  # display the dataframe
+  st.write(df_state)
+
+  # Dropdown for selecting numeric column for choropleth map
+  numeric_columns = df_state.select_dtypes(include=['float64', 'int64']).columns
+  default_index = list(numeric_columns).index("WA EMI")  # Find the index of "WA EMI"
+  selected_column = st.selectbox('Select Column for Choropleth Map:', numeric_columns, index=default_index)
+
+  # Merge the GeoJSON data with your df_state DataFrame
+  for feature in geojson_data['features']:
+      state_name = feature['properties']['name']
+      state_code = state_name_to_code(state_name)
+      if state_code and state_code in df_state.index:  # Ensure state_code exists and is in df_state
+          feature['properties']['value_to_display'] = df_state.loc[state_code, selected_column]
+      else:
+          feature['properties']['value_to_display'] = 0  # default value, can be adjusted as needed
+
+  # Use Pydeck's GeoJsonLayer to visualize
+  view_state = pdk.ViewState(latitude=37.7749, longitude=-122.4194, zoom=4, pitch=0)
+
+  layer = pdk.Layer(
+      "GeoJsonLayer",
+      data=geojson_data,
+      opacity=0.6,
+      stroked=False,
+      filled=True,
+      extruded=True,
+      wireframe=True,
+      get_elevation=f"properties.value_to_display * 50",
+      get_fill_color="[255, 255, properties.value_to_display]",
+      get_line_color=[255, 255, 255],
+      pickable=True
+  )
+
+  # Render the map
+  st.pydeck_chart(pdk.Deck(layers=[layer], initial_view_state=view_state))
 
 
 if __name__ == "__main__":

@@ -6,4 +6,5 @@ streamlit
 matplotlib
 seaborn
 plotly
+pydeck
 openpyxl
